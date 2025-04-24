@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Треугольник с текстурой</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        canvas {
+            border: 1px solid #000;
+            cursor: crosshair;
+        }
+    </style>
+</head>
+<body>
+    <h1>Треугольник с текстурой</h1>
+    <canvas id="mainCanvas" width="600" height="600"></canvas>
+    <input type="file" id="textureUpload" accept="image/*">
+    <button id="clearBtn">Очистить</button>
+    <script>
+        const canvas = document.getElementById('mainCanvas');
+        const ctx = canvas.getContext('2d');
+        const textureUpload = document.getElementById('textureUpload');
+        const clearBtn = document.getElementById('clearBtn');
+
+        let trianglePoints = [];
+        let loadedImage = null;
+        const canvasSize = canvas.width;
+
+        canvas.addEventListener('click', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const x = Math.max(0, Math.min(e.clientX - rect.left, canvasSize - 1));
+            const y = Math.max(0, Math.min(e.clientY - rect.top, canvasSize - 1));
+
+            if (trianglePoints.length < 3) {
+                trianglePoints.push([x, y]);
+                ctx.beginPath();
+                ctx.arc(x, y, 2, 0, 2 * Math.PI);
+                ctx.fillStyle = 'red';
+                ctx.fill();
+            }
+
+            if (trianglePoints.length === 3) {
+                drawTriangle();
+                if (loadedImage) applyTextureToTriangle();
+            }
+        });
+
+        textureUpload.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        loadedImage = img;
+                        if (trianglePoints.length === 3) {
+                            drawTriangle();
+                            applyTextureToTriangle();
+                        }
+                    };
+                    img.src = event.target.result;
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+
+        clearBtn.addEventListener('click', () => {
+            trianglePoints = [];
+            loadedImage = null;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+        });
+
+        function drawTriangle() {
+            ctx.beginPath();
+            ctx.moveTo(trianglePoints[0][0], trianglePoints[0][1]);
+            for (let i = 1; i < trianglePoints.length; i++) {
+                ctx.lineTo(trianglePoints[i][0], trianglePoints[i][1]);
+            }
+            ctx.closePath();
+            ctx.strokeStyle = 'black';
+            ctx.stroke();
+        }
+
+        function applyTextureToTriangle() {
+            const minX = Math.min(...trianglePoints.map(p => p[0]));
+            const maxX = Math.max(...trianglePoints.map(p => p[0]));
+            const minY = Math.min(...trianglePoints.map(p => p[1]));
+            const maxY = Math.max(...trianglePoints.map(p => p[1]));
+
+            const triWidth = maxX - minX + 1;
+            const triHeight = maxY - minY + 1;
+            if (triWidth <= 0 || triHeight <= 0) return;
+
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = triWidth;
+            tempCanvas.height = triHeight;
+            const tempCtx = tempCanvas.getContext('2d');
+            tempCtx.drawImage(loadedImage, 0, 0, triWidth, triHeight);
+            const scaledImageData = tempCtx.getImageData(0, 0, triWidth, triHeight);
+
+            const resultImageData = ctx.createImageData(canvasSize, canvasSize);
+
+            for (let y = minY; y <= maxY; y++) {
+                let intersections = [];
+                for (let i = 0; i < 3; i++) {
+                    const [x1, y1] = trianglePoints[i];
+                    const [x2, y2] = trianglePoints[(i + 1) % 3];
+                    if ((y1 <= y && y < y2) || (y2 <= y && y < y1)) {
+                        if (y2 !== y1) {
+                            const x = x1 + (y - y1) * (x2 - x1) / (y2 - y1);
+                            intersections.push(x);
+                        }
+                    } else if (y === y1 && y === y2) {
+                        intersections.push(x1, x2);
+                    }
+                }
+
+                if (intersections.length < 2) continue;
+
+                const xLeft = Math.min(...intersections);
+                const xRight = Math.max(...intersections);
+                const rowWidth = Math.floor(xRight - xLeft) + 1;
+                if (rowWidth <= 0) continue;
+
+                const rowY = Math.floor((y - minY) * triHeight / triHeight);
+                const rowPixels = [];
+                for (let x = 0; x < triWidth; x++) {
+                    const idx = (rowY * triWidth + x) * 4;
+                    rowPixels.push([
+                        scaledImageData.data[idx],
+                        scaledImageData.data[idx + 1],
+                        scaledImageData.data[idx + 2],
+                        scaledImageData.data[idx + 3]
+                    ]);
+                }
+
+                const compressedRow = [];
+                for (let i = 0; i < rowWidth; i++) {
+                    const srcX = Math.floor(i * triWidth / rowWidth);
+                    compressedRow.push(rowPixels[srcX]);
+                }
+
+                for (let i = 0; i < compressedRow.length; i++) {
+                    const x = Math.floor(xLeft + i);
+                    const idx = (y * canvasSize + x) * 4;
+                    const [r, g, b, a] = compressedRow[i];
+                    resultImageData.data[idx] = r;
+                    resultImageData.data[idx + 1] = g;
+                    resultImageData.data[idx + 2] = b;
+                    resultImageData.data[idx + 3] = a;
+                }
+            }
+
+            ctx.putImageData(resultImageData, 0, 0);
+        }
+    </script>
+</body>
+</html>

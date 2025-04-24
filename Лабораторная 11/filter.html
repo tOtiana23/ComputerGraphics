@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Фильтр на фото</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background-color: #f4f4f4;
+        }
+
+        .container {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 20px;
+            align-items: center;
+        }
+
+        canvas {
+            border: 1px solid black;
+            background-color: white;
+        }
+
+        .controls {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+
+        button {
+            padding: 10px 15px;
+            cursor: pointer;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+        }
+
+        button:hover {
+            background: #0056b3;
+        }
+
+        .radio-group {
+            display: flex;
+            gap: 10px;
+        }
+    </style>
+</head>
+
+<body>
+    <input type="file" id="upload" accept="image/*">
+    <div class="container">
+        <canvas id="originalCanvas"></canvas>
+        <button id="applyFilter">▶</button>
+        <canvas id="filteredCanvas"></canvas>
+    </div>
+    <div class="controls">
+        <label>Коэффициент k: <input type="number" id="k" value="1" step="0.1"></label>
+        <label>Размер области n: <input type="number" id="n" value="3" min="1"></label>
+        <label>Матрица фильтра (через запятую, построчно):</label>
+        <textarea id="filterMatrix" rows="3" cols="30">0,-1,0,-1,5,-1,0,-1,0</textarea>
+
+        <label>Обработка краёв изображения:</label>
+        <div class="radio-group">
+            <input type="radio" id="edgeMethod1" name="edgeMethod" value="method1" checked> Пустые клетки = 0
+            <input type="radio" id="edgeMethod2" name="edgeMethod" value="method2"> Пустые клетки = соседние пиксели
+        </div>
+
+        <label>Начало обработки:</label>
+        <div class="radio-group">
+            <input type="radio" id="startTopLeft" name="startPoint" value="topLeft" checked> С левого верхнего
+            <input type="radio" id="startBottomRight" name="startPoint" value="bottomRight"> С правого нижнего
+        </div>
+    </div>
+    <script>
+        const upload = document.getElementById("upload");
+        const originalCanvas = document.getElementById("originalCanvas");
+        const filteredCanvas = document.getElementById("filteredCanvas");
+        const applyFilterBtn = document.getElementById("applyFilter");
+        const kInput = document.getElementById("k");
+        const nInput = document.getElementById("n");
+        const filterMatrixInput = document.getElementById("filterMatrix");
+        const edgeMethod1 = document.getElementById("edgeMethod1");
+        const edgeMethod2 = document.getElementById("edgeMethod2");
+        const startTopLeft = document.getElementById("startTopLeft");
+        const startBottomRight = document.getElementById("startBottomRight");
+
+        const originalCtx = originalCanvas.getContext("2d");
+        const filteredCtx = filteredCanvas.getContext("2d");
+        let img = new Image();
+
+        upload.addEventListener("change", (event) => {
+            const file = event.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    img.src = e.target.result;
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+
+        img.onload = function () {
+            const maxWidth = 400;
+            const maxHeight = 400;
+            let width = img.width;
+            let height = img.height;
+
+            if (width > maxWidth || height > maxHeight) {
+                const ratio = Math.min(maxWidth / width, maxHeight / height);
+                width = Math.round(width * ratio);
+                height = Math.round(height * ratio);
+            }
+
+            originalCanvas.width = width;
+            originalCanvas.height = height;
+            filteredCanvas.width = width;
+            filteredCanvas.height = height;
+
+            originalCtx.drawImage(img, 0, 0, width, height);
+        };
+
+        function applyFilter() {
+            const k = parseFloat(kInput.value);
+            const n = parseInt(nInput.value);
+            const matrix = filterMatrixInput.value.split(',').map(Number);
+
+            if (matrix.length !== n * n) {
+                alert("Матрица фильтра должна содержать n*n элементов!");
+                return;
+            }
+
+            const imageData = originalCtx.getImageData(0, 0, originalCanvas.width, originalCanvas.height);
+            const pixels = imageData.data;
+            const width = originalCanvas.width;
+            const height = originalCanvas.height;
+            const newPixels = new Uint8ClampedArray(pixels.length);
+
+            // Копируем исходные пиксели
+            for (let i = 0; i < pixels.length; i++) {
+                newPixels[i] = pixels[i];
+            }
+
+            const halfN = Math.floor(n / 2);
+            const isEven = n % 2 === 0;
+            
+            // Определяем направление обработки
+            const startY = startTopLeft.checked ? 0 : height - 1;
+            const endY = startTopLeft.checked ? height : -1;
+            const stepY = startTopLeft.checked ? 1 : -1;
+            
+            const startX = startTopLeft.checked ? 0 : width - 1;
+            const endX = startTopLeft.checked ? width : -1;
+            const stepX = startTopLeft.checked ? 1 : -1;
+
+            for (let y = startY; y !== endY; y += stepY) {
+                for (let x = startX; x !== endX; x += stepX) {
+                    let r = 0, g = 0, b = 0;
+                    let totalWeight = 0;
+
+                    for (let dy = -halfN; dy <= halfN - (isEven ? 1 : 0); dy++) {
+                        for (let dx = -halfN; dx <= halfN - (isEven ? 1 : 0); dx++) {
+                            let iX = x + dx + (isEven ? 0.5 : 0);
+                            let iY = y + dy + (isEven ? 0.5 : 0);
+                            
+                            // Округляем координаты для четных матриц
+                            if (isEven) {
+                                iX = Math.round(iX);
+                                iY = Math.round(iY);
+                            }
+                            
+                            let weight = matrix[(dy + halfN) * n + (dx + halfN)];
+                            
+                            if (iX < 0 || iX >= width || iY < 0 || iY >= height) {
+                                if (edgeMethod1.checked) {
+                                    continue;
+                                } else {
+                                    iX = Math.min(Math.max(iX, 0), width - 1);
+                                    iY = Math.min(Math.max(iY, 0), height - 1);
+                                }
+                            }
+                            
+                            let i = (iY * width + iX) * 4;
+                            r += pixels[i] * weight;
+                            g += pixels[i + 1] * weight;
+                            b += pixels[i + 2] * weight;
+                            totalWeight += weight;
+                        }
+                    }
+
+                    const index = (y * width + x) * 4;
+                    
+                    if (totalWeight !== 0) {
+                        // Нормализуем по сумме весов
+                        newPixels[index] = Math.min(Math.max(Math.round(r * k / totalWeight), 0), 255);
+                        newPixels[index + 1] = Math.min(Math.max(Math.round(g * k / totalWeight), 0), 255);
+                        newPixels[index + 2] = Math.min(Math.max(Math.round(b * k / totalWeight), 0), 255);
+                    } else {
+                        // Для случаев когда сумма весов = 0 (например, фильтр Лапласа)
+                        newPixels[index] = Math.min(Math.max(Math.round(r * k), 0), 255);
+                        newPixels[index + 1] = Math.min(Math.max(Math.round(g * k), 0), 255);
+                        newPixels[index + 2] = Math.min(Math.max(Math.round(b * k), 0), 255);
+                    }
+                    newPixels[index + 3] = pixels[index + 3]; // Альфа-канал без изменений
+                }
+            }
+
+            filteredCtx.putImageData(new ImageData(newPixels, width, height), 0, 0);
+        }
+
+        applyFilterBtn.addEventListener("click", applyFilter);
+    </script>
+</body>
+
+</html>

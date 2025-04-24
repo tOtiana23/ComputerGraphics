@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>Ручная триангуляция</title>
+  <style>
+    canvas {
+      border: 1px solid black;
+      cursor: crosshair;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="canvas" width="800" height="600"></canvas>
+
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+
+    let points = [];
+    let triangles = [];
+    let isPolygonClosed = false;
+    let lastClickTime = 0;
+
+    canvas.addEventListener('click', (e) => {
+      const now = Date.now();
+      // Игнорируем click, если был двойной клик (в пределах 300 мс)
+      if (now - lastClickTime < 300) return;
+      lastClickTime = now;
+
+      if (isPolygonClosed) return;
+
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+
+      points.push([x, y]);
+      draw();
+    });
+
+    canvas.addEventListener('dblclick', () => {
+      if (points.length >= 3 && !isPolygonClosed) {
+        isPolygonClosed = true;
+
+        // Обеспечим порядок по часовой стрелке
+        if (!isClockwise(points)) {
+          points.reverse();
+        }
+
+        triangles = earClippingTriangulation(points);
+        draw();
+      }
+    });
+
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Треугольники
+      ctx.fillStyle = "rgba(0, 150, 255, 0.3)";
+      ctx.strokeStyle = "blue";
+      for (const [a, b, c] of triangles) {
+        ctx.beginPath();
+        ctx.moveTo(a[0], a[1]);
+        ctx.lineTo(b[0], b[1]);
+        ctx.lineTo(c[0], c[1]);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+      }
+
+      // Многоугольник
+      if (points.length > 0) {
+        ctx.beginPath();
+        ctx.moveTo(points[0][0], points[0][1]);
+        for (let i = 1; i < points.length; i++) {
+          ctx.lineTo(points[i][0], points[i][1]);
+        }
+        if (isPolygonClosed) {
+          ctx.lineTo(points[0][0], points[0][1]); // замыкание
+        }
+        ctx.strokeStyle = "black";
+        ctx.stroke();
+      }
+
+      // Точки
+      ctx.fillStyle = "black";
+      for (const [x, y] of points) {
+        ctx.beginPath();
+        ctx.arc(x, y, 4, 0, 2 * Math.PI);
+        ctx.fill();
+      }
+    }
+
+    function isClockwise(pts) {
+      let sum = 0;
+      for (let i = 0; i < pts.length; i++) {
+        const [x1, y1] = pts[i];
+        const [x2, y2] = pts[(i + 1) % pts.length];
+        sum += (x2 - x1) * (y2 + y1);
+      }
+      return sum > 0;
+    }
+
+    function earClippingTriangulation(inputPoints) {
+      const triangles = [];
+      const points = inputPoints.map(p => [...p]);
+      let vertexIndices = points.map((_, i) => i);
+      let loopGuard = 0;
+
+      while (vertexIndices.length > 3 && loopGuard++ < 1000) {
+        let earFound = false;
+
+        for (let i = 0; i < vertexIndices.length; i++) {
+          const prev = vertexIndices[(i - 1 + vertexIndices.length) % vertexIndices.length];
+          const curr = vertexIndices[i];
+          const next = vertexIndices[(i + 1) % vertexIndices.length];
+
+          const a = points[prev];
+          const b = points[curr];
+          const c = points[next];
+
+          if (!isConvex(a, b, c)) continue;
+
+          let isEar = true;
+
+          for (const idx of vertexIndices) {
+            if (idx === prev || idx === curr || idx === next) continue;
+            if (pointInTriangle(points[idx], a, b, c)) {
+              isEar = false;
+              break;
+            }
+          }
+
+          if (isEar) {
+            triangles.push([a, b, c]);
+            vertexIndices.splice(i, 1);
+            earFound = true;
+            break;
+          }
+        }
+
+        if (!earFound) {
+          console.warn("Не найдено уха. Возможно, фигура самопересекается.");
+          break;
+        }
+      }
+
+      if (vertexIndices.length === 3) {
+        const [i1, i2, i3] = vertexIndices;
+        triangles.push([points[i1], points[i2], points[i3]]);
+      }
+
+      return triangles;
+    }
+
+    function isConvex(a, b, c) {
+      const cross = (b[0] - a[0]) * (c[1] - b[1]) -
+                    (b[1] - a[1]) * (c[0] - b[0]);
+      return cross < 0;
+    }
+
+    function pointInTriangle(p, a, b, c) {
+      function sign(p1, p2, p3) {
+        return (p1[0] - p3[0]) * (p2[1] - p3[1]) -
+               (p2[0] - p3[0]) * (p1[1] - p3[1]);
+      }
+
+      const d1 = sign(p, a, b);
+      const d2 = sign(p, b, c);
+      const d3 = sign(p, c, a);
+
+      const hasNeg = (d1 < 0) || (d2 < 0) || (d3 < 0);
+      const hasPos = (d1 > 0) || (d2 > 0) || (d3 > 0);
+
+      return !(hasNeg && hasPos);
+    }
+  </script>
+</body>
+</html>

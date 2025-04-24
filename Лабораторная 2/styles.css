@@ -1,0 +1,17 @@
+.grid {
+    display: grid;
+    grid-template-columns: repeat(50, 10px);
+    grid-template-rows: repeat(50, 10px);
+    gap: 1px;
+}
+
+.pixel {
+    width: 10px;
+    height: 10px;
+    background-color: white;
+    border: 1 px solid #ddd;
+}
+
+.filled {
+    background-color: black;
+}

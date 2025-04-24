@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Water Plate Simulation</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+        }
+
+        canvas {
+            display: block;
+        }
+    </style>
+</head>
+
+<body>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+    <script>
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0xcce0ff);
+        const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.1, 1000);
+        camera.position.set(8, 12, 15);
+        camera.lookAt(0, 3, 0);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(innerWidth, innerHeight);
+        renderer.shadowMap.enabled = true;
+        document.body.appendChild(renderer.domElement);
+
+        const light = new THREE.DirectionalLight(0xffffff, 1.5);
+        light.position.set(10, 20, 10);
+        light.castShadow = true;
+        light.shadow.mapSize.width = 2048;
+        light.shadow.mapSize.height = 2048;
+        scene.add(light);
+
+        const floor = new THREE.Mesh(
+            new THREE.BoxGeometry(12, 1, 12),
+            new THREE.MeshStandardMaterial({ color: 0xaaaaaa, roughness: 0.8 })
+        );
+        floor.position.y = -0.5;
+        floor.receiveShadow = true;
+        scene.add(floor);
+
+        const wallMaterial = new THREE.MeshStandardMaterial({
+            color: 0x777777,
+            metalness: 0.2,
+            roughness: 0.7
+        });
+
+        const walls = [
+            new THREE.Mesh(new THREE.BoxGeometry(12, 4, 0.5), wallMaterial),
+            new THREE.Mesh(new THREE.BoxGeometry(12, 4, 0.5), wallMaterial),
+            new THREE.Mesh(new THREE.BoxGeometry(0.5, 4, 12), wallMaterial),
+            new THREE.Mesh(new THREE.BoxGeometry(0.5, 4, 12), wallMaterial)
+        ];
+        walls[0].position.set(0, 1.5, -6);
+        walls[1].position.set(0, 1.5, 6);
+        walls[2].position.set(-6, 1.5, 0);
+        walls[3].position.set(6, 1.5, 0);
+
+        walls.forEach(w => {
+            w.castShadow = true;
+            w.receiveShadow = true;
+            scene.add(w);
+        });
+
+        const pipe = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.3, 0.3, 2.5, 32),
+            new THREE.MeshStandardMaterial({ color: 0x555555, metalness: 0.7, roughness: 0.3 })
+        );
+        pipe.rotation.z = Math.PI / 2;
+        pipe.position.set(0, 8, 0);
+        pipe.castShadow = true;
+        scene.add(pipe);
+
+        // Наклонная пластина
+        const plateWidth = 6;
+        const plateHeight = 0.2;
+        const plate = new THREE.Mesh(
+            new THREE.BoxGeometry(plateWidth, plateHeight, 3),
+            new THREE.MeshStandardMaterial({
+                color: 0xff9999,
+                metalness: 0.2,
+                roughness: 0.6
+            })
+        );
+        plate.position.set(0, 4, 0);
+        plate.rotation.z = -Math.PI / 6;
+        plate.castShadow = true;
+        plate.receiveShadow = true;
+        scene.add(plate);
+
+        const waterGeometry = new THREE.CylinderGeometry(0.1, 0.1, 0.1, 32);
+        const waterMaterial = new THREE.MeshStandardMaterial({
+            color: 0x44aaff,
+            transparent: true,
+            opacity: 0.7,
+            metalness: 0.2,
+            roughness: 0.1
+        });
+        const water = new THREE.Mesh(waterGeometry, waterMaterial);
+        water.position.y = 0.1;
+        scene.add(water);
+
+        const voxelRadius = 0.5;
+        const voxelGeometry = new THREE.SphereGeometry(voxelRadius, 12, 12);
+        const voxelMaterial = new THREE.MeshStandardMaterial({
+            color: 0x33ccff,
+            transparent: true,
+            opacity: 0.9,
+            metalness: 0.3,
+            roughness: 0.1
+        });
+
+        const droplets = [];
+        const maxDroplets = 1000;
+        let waterLevel = 0;
+        let waterRadius = 0;
+
+        function createDroplet() {
+            const pos = new THREE.Vector3(
+                (Math.random() - 0.5) * 0.5,
+                8,
+                (Math.random() - 0.5) * 0.5
+            );
+            const vel = new THREE.Vector3(
+                (Math.random() - 0.5) * 0.006,
+                -0.02 + (Math.random() - 0.5) * 0.002,
+                (Math.random() - 0.5) * 0.006
+            );
+            const mesh = new THREE.Mesh(voxelGeometry, voxelMaterial.clone());
+            mesh.position.copy(pos);
+            mesh.castShadow = true;
+            scene.add(mesh);
+            return { mesh, velocity: vel, stopped: false, inWater: false };
+        }
+
+        function spawnDroplets() {
+            if (droplets.length < maxDroplets && Math.random() < 0.3) {
+                droplets.push(createDroplet());
+            }
+        }
+
+        function handlePlateCollision(droplet) {
+            const p = droplet.mesh.position;
+            const localPos = plate.worldToLocal(p.clone());
+
+            const halfW = plateWidth / 2;
+            const halfL = 1.5;
+
+            if (
+                localPos.y < plateHeight / 2 + voxelRadius &&
+                Math.abs(localPos.x) < halfW &&
+                Math.abs(localPos.z) < halfL
+            ) {
+                droplet.velocity.y = Math.abs(droplet.velocity.y) * 0.3;
+                droplet.velocity.x += (Math.random() - 0.5) * 0.01;
+                droplet.velocity.z += (Math.random() - 0.5) * 0.01;
+
+                const worldNormal = new THREE.Vector3(0, 1, 0).applyQuaternion(plate.quaternion);
+                p.add(worldNormal.multiplyScalar(0.1));
+            }
+        }
+
+        function handleFloorAndWalls(d) {
+            const p = d.mesh.position;
+
+            if (!d.inWater && p.y < waterLevel + voxelRadius && new THREE.Vector2(p.x, p.z).length() < waterRadius) {
+                d.inWater = true;
+                d.velocity.set(0, 0, 0);
+                d.mesh.visible = false;
+                increaseWaterLevel();
+                return;
+            }
+
+            if (p.y - voxelRadius < 0) {
+                p.y = voxelRadius;
+                d.velocity.y *= -0.05;
+                d.velocity.x *= 0.2;
+                d.velocity.z *= 0.2;
+
+                if (Math.abs(d.velocity.y) < 0.0005) {
+                    d.velocity.x += (Math.random() - 0.5) * 0.0002;
+                    d.velocity.z += (Math.random() - 0.5) * 0.0002;
+                }
+
+                if (Math.abs(d.velocity.length()) < 0.0001) {
+                    d.velocity.set(0, 0, 0);
+                    d.stopped = true;
+                }
+            }
+
+            if (p.x < -6 + voxelRadius || p.x > 6 - voxelRadius) {
+                d.velocity.x *= -0.3;
+                d.velocity.z += (Math.random() - 0.5) * 0.0005;
+                p.x = THREE.MathUtils.clamp(p.x, -6 + voxelRadius, 6 - voxelRadius);
+            }
+            if (p.z < -6 + voxelRadius || p.z > 6 - voxelRadius) {
+                d.velocity.z *= -0.3;
+                d.velocity.x += (Math.random() - 0.5) * 0.0005;
+                p.z = THREE.MathUtils.clamp(p.z, -6 + voxelRadius, 6 - voxelRadius);
+            }
+        }
+
+        const gravity = new THREE.Vector3(0, -0.001, 0);
+
+        function increaseWaterLevel() {
+            waterLevel += 0.01;
+            waterRadius = 2;
+
+            water.geometry.dispose();
+            water.geometry = new THREE.CylinderGeometry(
+                waterRadius * 0.95,
+                waterRadius * 0.95,
+                waterLevel * 0.9,
+                32
+            );
+            water.position.y = waterLevel * 0.45;
+        }
+
+        function updateDroplets() {
+            for (let i = droplets.length - 1; i >= 0; i--) {
+                const d = droplets[i];
+                if (!d.stopped && !d.inWater) {
+                    d.velocity.add(gravity);
+                    d.mesh.position.add(d.velocity);
+                    handlePlateCollision(d);
+                    handleFloorAndWalls(d);
+                } else if (d.inWater) {
+                    scene.remove(d.mesh);
+                    droplets.splice(i, 1);
+                }
+            }
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            spawnDroplets();
+            updateDroplets();
+            renderer.render(scene, camera);
+        }
+
+        animate();
+
+        window.addEventListener('resize', () => {
+            camera.aspect = innerWidth / innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(innerWidth, innerHeight);
+        });
+    </script>
+</body>
+
+</html>

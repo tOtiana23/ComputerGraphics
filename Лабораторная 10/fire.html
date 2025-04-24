@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Костер</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #111;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            font-family: Arial, sans-serif;
+        }
+
+        .container {
+            position: relative;
+            width: 80vmin;
+            height: 80vmin;
+        }
+
+        canvas {
+            display: block;
+            box-shadow: 0 0 40px rgba(255, 98, 0, 0.579)
+        }
+
+        .controls {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 10px;
+            border-radius: 5px;
+            z-index: 10;
+        }
+
+        h1 {
+            position: absolute;
+            bottom: 10px;
+            left: 0;
+            width: 100%;
+            text-align: center;
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 14px;
+            pointer-events: none;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="controls">
+            <div>Вращение X: <input type="range" id="rotX" min="-180" max="180" value="0"></div>
+            <div>Вращение Y: <input type="range" id="rotY" min="-180" max="180" value="0"></div>
+            <div>Интенсивность: <input type="range" id="intensity" min="1" max="20" value="10"></div>
+        </div>
+        <canvas id="canvas"></canvas>
+        <h1>Спички детям не игрушка!</h1>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const container = document.querySelector('.container');
+
+        // Размеры canvas (квадратные)
+        function resizeCanvas() {
+            const size = Math.min(container.offsetWidth, container.offsetHeight);
+            canvas.width = size;
+            canvas.height = size;
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        // Параметры куба
+        const cubeSize = 300;
+        const halfCube = cubeSize / 2;
+
+        // Радиус огня
+        const fireRadius = 50;
+
+        // Массив для хранения искр
+        let sparks = [];
+
+        // Параметры вращения
+        let rotationX = 0;
+        let rotationY = 0;
+
+        // Интенсивость искорок
+        let intensity = 10;
+
+        // Обработчики событий для элементов управления
+        document.getElementById('rotX').addEventListener('input', (e) => {
+            rotationX = parseInt(e.target.value);
+        });
+
+        document.getElementById('rotY').addEventListener('input', (e) => {
+            rotationY = parseInt(e.target.value);
+        });
+
+        document.getElementById('intensity').addEventListener('input', (e) => {
+            intensity = parseInt(e.target.value);
+        });
+
+        // Класс для искры
+        class Spark {
+            constructor() {
+                // Начальная позиция на полу
+                const angle = Math.random() * Math.PI * 2; // Генерируетcя случайный угол в радианах от 0 до 2π, что позволяет искре появляться в любом направлении по окружности
+                const r = Math.random() * fireRadius; // Генерируется случайное расстояние от центра до границы радиуса. Это определяет, насколько далеко от центра будет находиться искра по горизонтали
+                this.x = r * Math.cos(angle); // Вычисляется координата x искры, используя косинус угла. Это позволяет разместить искру на круге с радиусом r
+                this.y = halfCube; // Искра начинает свою жизнь на полу
+                this.z = r * Math.sin(angle); // Вычисляется координата z искры, используя синус угла. Это также помогает разместить искру на круге с радиусом r.
+
+                // Начальный цвет (яркий желто-оранжевый)
+                this.color = {
+                    r: 255,
+                    g: 150 + Math.random() * 105,
+                    b: 0,
+                    a: 1
+                };
+
+                // Скорость
+                this.vx = (Math.random() - 0.5) * 0.5; // Случайная скорость по оси x, чтоб искра могла двигаться немного влево и вправо
+                this.vy = -(Math.random() * 0.5 + 0.5); // Случайная скорость для движения вверх (отрицательное значение)
+                this.vz = (Math.random() - 0.5) * 0.5; // Случайная скорость по оси z, чтоб искра могла двигаться немного назад и вперед
+
+                // Жизнь искры
+                this.life = 100 + Math.random() * 100; // Максимальная жизнь искры от 100 до 200 кадров (единиц времени)
+                this.age = 0; // Возраст искры
+            }
+
+            // Метод для обновления состояния искры
+            update() {
+                // Движение. Каждая координата обновляется с добавлением текущей скорости и небольшого случайного значения для эффекта "пульсации"
+                this.x += this.vx + (Math.random() - 0.5) * 0.3;
+                this.y += this.vy + (Math.random() - 0.5) * 0.2;
+                this.z += this.vz + (Math.random() - 0.5) * 0.3;
+
+                // Изменение цвета
+                this.color.a = 1 - this.age / this.life; // Уменьшение прозрачности по мере старения искры для эффекта затухания
+                this.color.g = Math.max(0, this.color.g - Math.random() * 2); // Уменьшаем значение зеленого цвета на случайное значение для уменьшения яркости
+
+                // Увеличение возраста
+                this.age++;
+
+                // Проверка на завершение жизни или выход за пределы куба
+                return this.age < this.life && this.color.a > 0 &&
+                    Math.abs(this.x) < halfCube &&
+                    this.y > -halfCube &&
+                    Math.abs(this.z) < halfCube;
+            }
+        }
+
+        // Функция для создания новых искр
+        function createSparks(count) {
+            for (let i = 0; i < count; i++) {
+                sparks.push(new Spark()); // Создаем новый объект класса искры и добавляем в массив
+            }
+        }
+
+        // Функция для преобразования 3D координат в 2D с учетом перспективы
+        function project(x, y, z) {
+            // Преобразование углов в радианы
+            const radX = rotationX * Math.PI / 180;
+            const radY = rotationY * Math.PI / 180;
+
+            // Вращение вокруг осей
+            // Вращение вокруг X
+            let newY = y * Math.cos(radX) - z * Math.sin(radX);
+            let newZ = y * Math.sin(radX) + z * Math.cos(radX);
+            y = newY;
+            z = newZ;
+
+            // Вращение вокруг Y
+            let newX = x * Math.cos(radY) + z * Math.sin(radY);
+            newZ = -x * Math.sin(radY) + z * Math.cos(radY);
+
+            x = newX;
+            z = newZ;
+
+            // Перспективная проекция. 
+            const scale = 1000 / (1000 + z); // Вычисление коэффициента масштабирования для перспективной проекции
+            const projectedX = canvas.width / 2 + x * scale; // Чем дальше объект (больше значение z), тем меньше масштаб (больше деление)
+            const projectedY = canvas.height / 2 + y * scale;
+
+            return {
+                x: projectedX,
+                y: projectedY,
+                scale: scale,
+                z: z
+            };
+        }
+
+        // Функция для рисования куба
+        function drawCube() {
+            // Вершины куба
+            const vertices = [
+                [-halfCube, -halfCube, -halfCube], [halfCube, -halfCube, -halfCube],
+                [halfCube, halfCube, -halfCube], [-halfCube, halfCube, -halfCube],
+                [-halfCube, -halfCube, halfCube], [halfCube, -halfCube, halfCube],
+                [halfCube, halfCube, halfCube], [-halfCube, halfCube, halfCube]
+            ];
+
+            // Преобразуем трехмерные вершины в двумерные
+            const projectedVertices = vertices.map(v => project(...v));
+
+            // Грани куба
+            const faces = [
+                [0, 1, 2, 3], [4, 5, 6, 7], [0, 4, 7, 3],
+                [1, 5, 6, 2], [0, 1, 5, 4], [3, 2, 6, 7]
+            ];
+
+            // Рисуем каждую грань
+            faces.forEach((face, i) => {
+                const points = face.map(idx => projectedVertices[idx]);
+
+                // Проверяем, видна ли грань (простая проверка по z)
+                const avgZ = points.reduce((sum, p) => sum + p.z, 0) / points.length;
+
+                // Вычисляем среднее значение координаты Z для всех точек грани 
+                //Если среднее значение Z меньше нуля, это означает, что грань находится 
+                // за камерой (не видна), и мы пропускаем ее рисование
+                if (avgZ < 0) return; // Не рисуем задние грани
+
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+                ctx.fillStyle = i === 1 ? 'rgba(50, 50, 50, 0.2)' : 'rgba(30, 30, 30, 0.1)';
+                ctx.lineWidth = 1;
+
+                // Рисование грани
+                ctx.beginPath();
+                ctx.moveTo(points[0].x, points[0].y);
+                for (let i = 1; i < points.length; i++) {
+                    ctx.lineTo(points[i].x, points[i].y);
+                }
+                ctx.closePath();
+                ctx.fill();
+                ctx.stroke();
+            });
+
+            // Рисуем плиточный пол внутри куба (теперь пол находится на y = halfCube)
+            const gridSize = 10;
+            const tileSize = cubeSize / gridSize;
+
+            for (let i = -gridSize / 2; i <= gridSize / 2; i++) {
+                for (let j = -gridSize / 2; j <= gridSize / 2; j++) {
+                    const x = i * tileSize;
+                    const z = j * tileSize;
+                    const y = halfCube;
+
+                    // Проецируем три точки плитки: левый нижний угол, правый нижний угол и левый верхний
+                    const projected = project(x, y, z);
+                    const projectedRight = project(x + tileSize, y, z);
+                    const projectedBottom = project(x, y, z + tileSize);
+
+                    // Задаем цвет заливки для плитки в зависимости от позиции (через четность индексов)
+                    ctx.fillStyle = (i + j) % 2 === 0 ? '#222' : '#333';
+                    ctx.beginPath();
+                    ctx.moveTo(projected.x, projected.y);
+                    ctx.lineTo(projectedRight.x, projectedRight.y);
+                    ctx.lineTo(projectedRight.x, projectedBottom.y);
+                    ctx.lineTo(projected.x, projectedBottom.y);
+                    ctx.closePath();
+                    ctx.fill();
+
+                    // Добавляем небольшие трещины между плитками
+                    ctx.strokeStyle = 'rgba(0,0,0,0.2)';
+                    ctx.lineWidth = 0.5;
+                    ctx.stroke();
+                }
+            }
+        }
+
+        // Функция для рисования искр
+        function drawSparks() {
+            sparks.forEach(spark => {
+                // Преобразовываем трехмерное в двухмерное
+                const projected = project(spark.x, spark.y, spark.z);
+
+                // Проверка масштаба, если projected.scale больше 0, это означает, что искра видима на canvas
+                if (projected.scale > 0) {
+                    const size = 3 * projected.scale;
+                    const color = spark.color;
+                    ctx.fillStyle = `rgba(${color.r}, ${color.g}, ${color.b}, ${color.a})`;
+
+                    // Для больших искр добавляем свечение
+                    if (size > 2) {
+                        ctx.shadowBlur = size * 1.5;
+                        ctx.shadowColor = `rgba(${color.r}, ${color.g}, ${color.b}, ${color.a})`;
+                    }
+
+                    ctx.beginPath();
+                    ctx.arc(projected.x, projected.y, size, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    // Сбрасываем тень
+                    ctx.shadowBlur = 0;
+                }
+            });
+
+            // Обновление и фильтрация искр
+            sparks = sparks.filter(spark => spark.update());
+        }
+
+        // Основной цикл анимации
+        function animate() {
+            // Очистка canvas
+            ctx.fillStyle = 'rgba(10, 10, 10, 0.2)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Создание новых искр
+            createSparks(intensity);
+
+            // Рисование сцены
+            drawCube();
+            drawSparks();
+
+            // Запуск следующего кадра
+            requestAnimationFrame(animate);
+        }
+
+        // Запуск анимации
+        animate();
+    </script>
+</body>
+
+</html>

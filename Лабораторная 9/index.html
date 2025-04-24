@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Гистограммы</title>
+    <!-- для графиков и диаграмм -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script> 
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+        }
+        input {
+            margin: 20px;
+        }
+        canvas {
+            max-width: 600px;
+            margin: 10px auto;
+        }
+        .container {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 20px;
+        }
+        .histogram {
+            width: 600px;
+            height: 300px;
+        }
+        #imageContainer {
+            margin: 20px;
+        }
+        img {
+            max-width: 600px;
+            border: 1px solid #ccc;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+
+<body>
+    <input type="file" id="imageInput" accept="image/*">
+    <div id="imageContainer"></div>
+    <div class="container">
+        <canvas id="histogramR" class="histogram"></canvas>
+        <canvas id="histogramG" class="histogram"></canvas>
+        <canvas id="histogramB" class="histogram"></canvas>
+        <canvas id="histogramAvg" class="histogram"></canvas>
+    </div>
+
+    <script>
+        let charts = []; //созданные графики, для удаления
+
+        document.getElementById("imageInput").addEventListener("change", function(event){
+            // Событие "change" срабатывает, когда пользователь выбирает файл (или изменяет выбор) в элементе ввода
+            const file = event.target.files[0]; //получаем доступ к файлам, выбранных пользователем, берем первый файл из списка
+            if (!file) return;
+
+            const reader = new FileReader(); //создаем объект FileReader, который позволяет асинхронно читать содержимое файлов
+            reader.onload = function(e) { //это событие срабатывает, когда чтение файла завершено
+                const img = new Image(); //создаем новый объект изображения
+                img.src = e.target.result; //записываем результат чтения файла (URL адрес данных, который содержит изображение в формате Base64)
+                img.onload = function() { //срабатывает когда изображение загружено
+                    displayImage(img); //показываем изображение
+                    processImage(img); //??
+                };
+            };
+            reader.readAsDataURL(file); //начинаем чтение содержимого выбранного файла как URL данных.
+            //Это позволяет загружать изображение в формате, который можно использовать в качестве источника для элемента img
+        })
+
+        function displayImage(img) {
+            const container = document.getElementById("imageContainer");
+            container.innerHTML = "" //очищаем старое изображение
+            const imageElement = document.createElement("img");
+            imageElement.src = img.src;
+            container.appendChild(imageElement);
+        }
+
+        function processImage(img) {
+            const canvas = document.createElement("canvas");
+            const ctx = canvas.getContext("2d");
+            canvas.width = img.width;
+            canvas.height = img.height;
+            ctx.drawImage(img, 0, 0);
+
+            const imageData = ctx.getImageData(0, 0, img.width, img.height); //получаем данные пикселей изображения
+            // Данные представляют собой массив pixels, где каждый пиксель представлен четырьмя значениями: красный (R), 
+            // зеленый (G), синий (B) и альфа-канал (A) (прозрачность)
+            const pixels = imageData.data;
+
+            const R = new Array(256).fill(0);
+            const G = new Array(256).fill(0);
+            const B = new Array(256).fill(0);
+            const avg = new Array(256).fill(0);
+
+            // Проходим по массиву пикселей с шагом 4 (поскольку каждый пиксель состоит из четырех значений: R, G, B и A)
+            for (let i = 0; i < pixels.length; i += 4) {
+                const r = pixels[i];
+                const g = pixels[i + 1];
+                const b = pixels[i + 2];
+                const mean = Math.round((r+b+g)/3);
+                
+                //считаем, сколько пикселей с конкретным значением у нас имеется
+                R[r]++;
+                G[g]++;
+                B[b]++;
+                avg[mean]++;
+            }
+            
+            updateHistogram("histogramR", "Красный канал", R, "red");
+            updateHistogram("histogramG", "Зеленый канал", G, "green");
+            updateHistogram("histogramB", "Синий канал", B, "blue");
+            updateHistogram("histogramAvg", "Среднее значение цветов", avg, "gray");
+        }
+
+        function updateHistogram(canvasId, label, data, color){
+            const canvas = document.getElementById(canvasId);
+
+            if (charts[canvasId]) {
+                charts[canvasId].destroy(); //удаляем старый график
+            }
+
+            charts[canvasId] = new Chart(canvas, { //создаем объект Chart, который инициализирует гистограмму на канве
+                type: "bar", //тип графика — столбчатая диаграмма
+                data: { //данные для графика
+                    labels: Array.from({length: 256}, (_, i) => i), //массив методок для оси X
+                    datasets: [{
+                        label: label, //то, что будет отображаться в легенде
+                        backgroundColor: color,
+                        borderColor: color,
+                        borderWidth: 1,
+                        data: data //содержит количество пикселей для каждого значения цвета
+                    }]
+                },
+                options: { //настройки графика
+                    responsive: true, //График будет адаптироваться к размерам родительского контейнера.
+                    scales: {
+                        x: {display: true},
+                        y: {display: true},
+                    }
+                }
+            });
+        }
+    </script>
+</body>
+</html>

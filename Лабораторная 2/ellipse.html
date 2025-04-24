@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Эллипс</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <label for="a">Полуось a: </label>
+    <input type="number" id="a" min="1" max="24" value="10">
+    <label for="b">Полуось b: </label>
+    <input type="number" id="b" min="1" max="24" value="6">
+    <button onclick="drawEllipse()">Построить эллипс</button>
+    <div class="grid" id="grid"></div>
+    <script src="script.js"></script>
+</body>
+</html>

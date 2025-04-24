@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Prism Animation</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background-color: #f9f9f9;
+        }
+
+        header {
+            text-align: center;
+            margin: 20px 0;
+        }
+
+        header h1 {
+            font-size: 2rem;
+            color: #333;
+        }
+
+        header p {
+            font-size: 1rem;
+            color: #666;
+        }
+
+        .container {
+            display: grid;
+            grid-template-columns: 1fr 300px;
+            gap: 20px;
+            width: 90%;
+            max-width: 1200px;
+        }
+
+        canvas {
+            border: 1px solid #ccc;
+            background-color: #fff;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .controls {
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .controls h2 {
+            font-size: 1.2rem;
+            color: #333;
+            margin-bottom: 10px;
+        }
+
+        .controls input[type="number"] {
+            width: 60px;
+            padding: 5px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+
+        .controls button {
+            padding: 8px 16px;
+            background-color: #007bff;
+            color: #fff;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+
+        .controls button:hover {
+            background-color: #0056b3;
+        }
+
+        .controls label {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 1rem;
+            color: #333;
+        }
+
+        .color-pickers {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+        }
+
+        .color-pickers label {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            font-size: 0.9rem;
+            color: #555;
+        }
+
+        .color-pickers input[type="color"] {
+            width: 100%;
+            height: 40px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <p>Отсечение невидимых граней</p>
+    </header>
+
+    <div class="container">
+        <canvas id="canvas"></canvas>
+        <div class="controls">
+            <div>
+                <h2>Настройки</h2>
+                <label>
+                    Количество сторон:
+                    <input type="number" id="n" min="3" value="4">
+                </label>
+                <button onclick="init()">Вертеть</button>
+            </div>
+
+            <div>
+                <h2>Крутим</h2>
+                <label><input type="checkbox" id="rotateX" checked> Вращать X</label>
+                <label><input type="checkbox" id="rotateY" checked> Вращать Y</label>
+                <label><input type="checkbox" id="rotateZ" checked> Вращать Z</label>
+            </div>
+
+            <div>
+                <h2>Цвета</h2>
+                <div class="color-pickers" id="colorPickers"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // JavaScript код остается неизменным
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        let faces = [], // массив граней призмы
+            colors = [], // массив цветов
+            angle = { x: 0, y: 0, z: 0 }; // текущие углы вращения
+
+        function init() {
+            const n = parseInt(document.getElementById('n').value); // получаем количество сторон
+            canvas.width = 600;
+            canvas.height = 400;
+
+            // Очистка предыдущих цветов
+            colors = [];
+
+            // Генерация цветов по умолчанию
+            const defaultColors = [
+                '#FFB6C1', '#FF69B4', '#FF1493', '#DB7093', '#C71585',
+                '#DDA0DD', '#FF77FF', '#FF9AA2', '#FF6F61', '#FFC0CB',
+                '#F08080', '#EAB8D1', '#F4A6C0', '#D19AAB', '#FF5C8A', '#F2A3B5'
+            ];
+
+            // Создаем массив цветов для всех граней (2 основания + n боковых)
+            for (let i = 0; i < n + 2; i++) {
+                colors.push(defaultColors[i % defaultColors.length]);
+            }
+
+            // Генерируем элементы управления цветом
+            const colorPickers = document.getElementById('colorPickers');
+            colorPickers.innerHTML = '';
+            colors.forEach((color, i) => {
+                const div = document.createElement('div');
+                div.innerHTML = `
+                    <label>Грань ${i + 1}: 
+                        <input type="color" value="${color}" onchange="colors[${i}] = this.value">
+                    </label>
+                `;
+                colorPickers.appendChild(div);
+            });
+
+            // Генерация призмы
+            const radius = 100;
+            const height = 150;
+            const base = Array.from({ length: n }, (_, i) => {
+                const angle = (i * 2 * Math.PI) / n; // вычисляем угол для каждой вершины
+                return {
+                    x: radius * Math.cos(angle),
+                    y: -height / 2,
+                    z: radius * Math.sin(angle)
+                };
+            });
+
+            const top = base.map(p => ({ ...p, y: height / 2 })); // верхняя часть призмы
+
+            // Создаем грани основания
+            faces = [
+                base.slice().reverse(), // нижнее основание
+                top                     // верхнее основание
+            ];
+
+            // Создаем боковые грани
+            for (let i = 0; i < n; i++) {
+                const next = (i + 1) % n;
+                faces.push([base[i], base[next], top[next], top[i]]);
+            }
+
+            // Запуск анимации
+            requestAnimationFrame(animate);
+        }
+
+        function rotatePoint(p, angles) {
+            let { x, y, z } = p;
+
+            // Вращаем вокруг X
+            const cx = Math.cos(angles.x);
+            const sx = Math.sin(angles.x);
+            [y, z] = [y * cx - z * sx, y * sx + z * cx];
+
+            // Вращаем вокруг Y
+            const cy = Math.cos(angles.y);
+            const sy = Math.sin(angles.y);
+            [x, z] = [x * cy + z * sy, -x * sy + z * cy];
+
+            // Вращаем вокруг Z
+            const cz = Math.cos(angles.z);
+            const sz = Math.sin(angles.z);
+            [x, y] = [x * cz - y * sz, x * sz + y * cz];
+
+            return { x, y, z };
+        }
+
+        function computeNormal(p1, p2, p3) {
+            const u = { x: p2.x - p1.x, y: p2.y - p1.y, z: p2.z - p1.z };
+            const v = { x: p3.x - p1.x, y: p3.y - p1.y, z: p3.z - p1.z };
+
+            return {
+                x: u.y * v.z - u.z * v.y,
+                y: u.z * v.x - u.x * v.z,
+                z: u.x * v.y - u.y * v.x
+            };
+        }
+
+        function project(p) {
+            const fov = 50099;
+            return {
+                x: canvas.width / 2 + (p.x * fov) / (p.z + fov),
+                y: canvas.height / 2 - (p.y * fov) / (p.z + fov)
+            };
+        }
+
+        function animate() {
+            // Обновление углов
+            if (document.getElementById('rotateX').checked) angle.x += 0.01;
+            if (document.getElementById('rotateY').checked) angle.y += 0.01;
+            if (document.getElementById('rotateZ').checked) angle.z += 0.01;
+
+            // Очистка холста
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Отрисовка граней
+            faces.forEach((face, i) => {
+                const rotated = face.map(p => rotatePoint(p, angle));
+                const normal = computeNormal(rotated[0], rotated[1], rotated[2]);
+
+                if (normal.z > 0) return; // Невидимая грань
+
+                const points = rotated.map(project);
+
+                ctx.fillStyle = colors[i];
+                ctx.beginPath();
+                points.forEach((p, j) =>
+                    j === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
+                ctx.closePath();
+                ctx.fill();
+            });
+
+            requestAnimationFrame(animate);
+        }
+
+        // Инициализация при загрузке
+        init();
+    </script>
+</body>
+</html>
