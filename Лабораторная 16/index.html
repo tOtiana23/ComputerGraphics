@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Наложение картиночек</title>
+  <style>
+    canvas { border: 1px solid black; margin-top: 10px; display: block; }
+    input { margin: 5px; }
+  </style>
+</head>
+<body>
+  <h2>Наложение картиночек</h2>
+  <input type="file" id="img1" accept="image/*">
+  <input type="file" id="img2" accept="image/*"><br>
+  <canvas id="canvas"></canvas>
+
+  <script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+
+let baseImage = null;     // Первая (базовая) картинка
+let overlayImage = null;  // Вторая картинка (накладываемая)
+let scale = 0.6;          // Масштаб изображения (уменьшаем его)
+
+
+// Загружаем первую картинку
+document.getElementById('img1').addEventListener('change', e => {
+  loadImage(e.target.files[0], img => {
+    baseImage = img;
+    // Устанавливаем размер канваса под первую картинку с масштабом
+    canvas.width = Math.floor(img.width * scale);
+    canvas.height = Math.floor(img.height * scale);
+    drawImage(baseImage, 0, 0, scale); // Отрисовываем её
+  });
+});
+
+// Загружаем вторую картинку
+document.getElementById('img2').addEventListener('change', e => {
+  loadImage(e.target.files[0], img => {
+    overlayImage = img;
+  });
+});
+
+// При клике на канвас накладываем вторую картинку в месте клика
+canvas.addEventListener('click', e => {
+  if (!baseImage || !overlayImage) return;
+
+  const rect = canvas.getBoundingClientRect();
+  const x = Math.floor(e.clientX - rect.left);
+  const y = Math.floor(e.clientY - rect.top);
+
+  blendImages(x, y); // Выполняем наложение
+});
+
+// Загрузка изображения из файла через FileReader
+function loadImage(file, callback) {
+  const reader = new FileReader();
+  reader.onload = function (e) {
+    const img = new Image();
+    img.onload = () => callback(img);
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+// Отрисовка изображения на канвасе с очисткой
+function drawImage(image, x, y, scale = 1) {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(image, x, y, image.width * scale, image.height * scale);
+}
+
+// Наложение overlayImage на canvas в точке (startX, startY)
+function blendImages(startX, startY) {
+  const overlayW = Math.floor(overlayImage.width * scale);
+  const overlayH = Math.floor(overlayImage.height * scale);
+
+  // Сохраняем текущее содержимое канваса
+  const oldCanvas = document.createElement('canvas');
+  oldCanvas.width = canvas.width;
+  oldCanvas.height = canvas.height;
+  const oldCtx = oldCanvas.getContext('2d');
+  oldCtx.drawImage(canvas, 0, 0);
+
+  // Увеличиваем размер канваса, если накладываемое изображение выходит за границы
+  const newW = Math.max(canvas.width, startX + overlayW);
+  const newH = Math.max(canvas.height, startY + overlayH);
+  canvas.width = newW;
+  canvas.height = newH;
+
+  // Перерисовываем ранее сохранённую картинку (чтобы не потерялась при изменении размера)
+  ctx.drawImage(oldCanvas, 0, 0);
+
+  // Создаём временный канвас для наложения, куда рисуем overlayImage с масштабом
+  const tmpCanvas = document.createElement('canvas');
+  tmpCanvas.width = overlayW;
+  tmpCanvas.height = overlayH;
+  const tmpCtx = tmpCanvas.getContext('2d');
+  tmpCtx.drawImage(overlayImage, 0, 0, overlayW, overlayH);
+
+  // Получаем пиксели из основного канваса и из временного (второго изображения)
+  const baseData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const overlayData = tmpCtx.getImageData(0, 0, overlayW, overlayH);
+
+  const basePixels = baseData.data;
+  const overlayPixels = overlayData.data;
+
+  // Перебираем каждый пиксель накладываемого изображения
+  for (let y = 0; y < overlayH; y++) {
+    for (let x = 0; x < overlayW; x++) {
+      const i = (y * overlayW + x) * 4;                           // Индекс пикселя во временном канвасе
+      const j = ((startY + y) * canvas.width + (startX + x)) * 4; // Индекс пикселя в основном канвасе
+
+      const alphaOverlay = overlayPixels[i + 3] / 255; // Прозрачность второго изображения
+      const alphaBase = basePixels[j + 3] / 255;        // Прозрачность базового изображения
+
+      if (alphaBase === 0) {
+        // Если пиксель на фоне полностью прозрачный — просто копируем пиксель overlay
+        basePixels[j]     = overlayPixels[i];
+        basePixels[j + 1] = overlayPixels[i + 1];
+        basePixels[j + 2] = overlayPixels[i + 2];
+        basePixels[j + 3] = overlayPixels[i + 3];
+      } else {
+        // Иначе усредняем цвета двух изображений
+        basePixels[j]     = (basePixels[j]     + overlayPixels[i])     / 2;
+        basePixels[j + 1] = (basePixels[j + 1] + overlayPixels[i + 1]) / 2;
+        basePixels[j + 2] = (basePixels[j + 2] + overlayPixels[i + 2]) / 2;
+        basePixels[j + 3] = 255; // Прозрачность делаем полной
+      }
+    }
+  }
+
+  // Обновляем канвас новым изображением
+  ctx.putImageData(baseData, 0, 0);
+}
+  </script>
+</body>
+</html>
